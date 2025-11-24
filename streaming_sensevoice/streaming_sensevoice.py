@@ -155,3 +155,25 @@ class StreamingSenseVoice:
                 res = self.decoder.ctc_greedy_search(probs, is_last=is_last)
                 times_ms, text = self.decode(res["times"], res["tokens"])
             yield {"timestamps": times_ms, "text": text}
+
+    def segment_inference(self, audio):
+        self.fbank.accept_waveform(audio, is_last=True)
+        features = self.fbank.get_lfr_frames(
+            neg_mean=self.neg_mean, inv_stddev=self.inv_stddev
+        )
+        if len(features) == 0:
+            return {"text": "", "timestamps": []}
+
+        speech = torch.tensor(features).to(self.device)
+        probs = self.inference(speech)
+
+        if self.beam_size > 1:
+            res = self.decoder.ctc_prefix_beam_search(
+                probs, beam_size=self.beam_size, is_last=True
+            )
+            times_ms, text = self.decode(res["times"][0], res["tokens"][0])
+        else:
+            res = self.decoder.ctc_greedy_search(probs, is_last=True)
+            times_ms, text = self.decode(res["times"], res["tokens"])
+
+        return {"timestamps": times_ms, "text": text}

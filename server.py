@@ -29,10 +29,10 @@ class Config(BaseSettings, cli_parse_args=True, cli_use_class_docs_for_groups=Tr
     DEBUG: bool = Field(False, description="Debug 模式")
 
     SENSEVOICE_MODEL_PATH: str = Field(
-        "iic/SenseVoiceSmall", 
+        "/home/tangyan/proj/hsc/ckpts/sensevoice-small",
         description="SenseVoice 模型路径/仓库")
     FSMN_VAD_MODEL_PATH: str = Field(
-        "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", 
+        "/home/tangyan/proj/hsc/ckpts/fsmn-vad-zh-cn-16k",
         description="FSMN-VAD 模型路径/仓库"
     )
     DEVICE: str = Field("cpu", description="推理设备，cpu/cuda")
@@ -59,6 +59,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+async def root():
+    return {"message": "ASR API Server is running"}
 
 
 class TranscribeRequest(BaseModel):
@@ -107,22 +112,10 @@ def _run_transcription(
     chunk_size = max(int(config.SAMPLERATE * chunk_ms / 1000), 1)
     segments: List[Dict] = []
     current_segment = None
-    detected = False
     seg_id = 0
     cursor = 0
     total_len = len(samples)
-
-    def finalize(end_sample: int | None = None):
-        nonlocal current_segment, detected, seg_id
-        if current_segment and detected:
-            if end_sample is not None:
-                current_segment["endAt"] = end_sample / config.SAMPLERATE
-            elif "endAt" not in current_segment:
-                current_segment["endAt"] = total_len / config.SAMPLERATE
-            segments.append(current_segment)
-            seg_id += 1
-        current_segment = None
-        detected = False
+    current_speech_buffer = []
 
     while cursor < total_len:
         chunk = samples[cursor : cursor + chunk_size]
@@ -131,35 +124,32 @@ def _run_transcription(
 
         for speech_dict, speech_samples in vad(chunk, is_final=is_final):
             if "start" in speech_dict:
-                model.reset()
+                current_speech_buffer = []
                 current_segment = {
                     "id": seg_id,
                     "beginAt": speech_dict["start"] / config.SAMPLERATE,
                     "text": "",
                     "timestamps": [],
                 }
-                detected = False
 
-            is_last = "end" in speech_dict
-            for res in model.streaming_inference(speech_samples, is_last):
-                text = res.get("text") or ""
+            if current_segment is not None:
+                current_speech_buffer.append(speech_samples)
+
+            if "end" in speech_dict and current_segment is not None:
+                full_speech = np.concatenate(current_speech_buffer)
+                model.reset()
+                res = model.segment_inference(full_speech)
+                
+                text = res.get("text", "")
                 if text:
-                    detected = True
-                    if current_segment is None:
-                        current_segment = {
-                            "id": seg_id,
-                            "beginAt": cursor / config.SAMPLERATE,
-                            "text": "",
-                            "timestamps": [],
-                        }
-                    current_segment["text"] += text
-                    current_segment["timestamps"] = res.get("timestamps") or []
-
-            if is_last:
-                finalize(speech_dict.get("end"))
-
-    if current_segment and detected:
-        finalize()
+                    current_segment["text"] = text
+                    current_segment["timestamps"] = res.get("timestamps", [])
+                    current_segment["endAt"] = speech_dict["end"] / config.SAMPLERATE
+                    segments.append(current_segment)
+                    seg_id += 1
+                
+                current_segment = None
+                current_speech_buffer = []
 
     return {
         "text": "".join(seg.get("text", "") for seg in segments),
