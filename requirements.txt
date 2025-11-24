@@ -1,13 +1,20 @@
 asr-decoder
 funasr
 online-fbank
-# pysilero
 sounddevice
 soundfile
-# manually install due to torch version conflict
-# torch<=2.3
-# torchaudio
 pydub
 onnx
 onnxconverter_common
 numpy==1.26.3
+fastapi[standard]
+pydantic
+pydantic-settings
+loguru
+
+## for python version silero, not used
+# pysilero
+
+## manually install due to torch version conflict
+# torch<=2.3
+# torchaudio
