@@ -42,7 +42,7 @@ from urllib.parse import parse_qs
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
-from pysilero import VADIterator
+from fsmn_vad import FSMNVADIterator
 
 from loguru import logger
 
@@ -59,12 +59,12 @@ class Config(BaseSettings, cli_parse_args=True, cli_use_class_docs_for_groups=Tr
     PORT: int = Field(8000, description="Port")
     DEBUG: bool = Field(False, description="Debug mode")
     SENSEVOICE_MODEL_PATH: str = Field(
-        "iic/SenseVoiceSmall", description="SenseVoice model path"
+        "/home/tangyan/proj/hsc/ckpts/sensevoice-small", description="SenseVoice model path"
     )
-    DEVICE: str = Field("cpu", description="Device")
+    DEVICE: str = Field("cuda", description="Device")
     SILEROVAD_VERSION: str = Field("v5", description="SileroVAD version, v4 or v5")
     SAMPLERATE: int = Field(16000, description="Sample rate")
-    CHUNK_DURATION: float = Field(0.1, description="Chunk duration (s)")
+    CHUNK_DURATION: float = Field(0.2, description="Chunk duration (s)")
     VAD_MIN_SILENCE_DURATION_MS: int = Field(
         550, description="VAD min slience duration (ms)"
     )
@@ -138,10 +138,11 @@ async def websocket_endpoint(websocket: WebSocket):
         sensevoice_model = StreamingSenseVoice(
             model=config.SENSEVOICE_MODEL_PATH, device=config.DEVICE
         )
-        vad_iterator = VADIterator(
-            version=config.SILEROVAD_VERSION,
-            threshold=vad_threshold,
-            min_silence_duration_ms=vad_min_silence_duration_ms,
+        
+        # FSMN-VAD setup
+        vad_iterator = FSMNVADIterator(
+            model_path="/home/tangyan/proj/hsc/ckpts/fsmn-vad-zh-cn-16k",
+            chunk_size_ms=int(chunk_duration * 1000)
         )
 
         audio_buffer = np.array([], dtype=np.float32)
@@ -175,6 +176,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 chunk = audio_buffer[:chunk_size]
                 audio_buffer = audio_buffer[chunk_size:]
 
+                # VAD inference
                 for speech_dict, speech_samples in vad_iterator(chunk):
                     if "start" in speech_dict:
                         sensevoice_model.reset()
