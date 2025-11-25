@@ -19,8 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
-from fsmn_vad import FSMNVADIterator
-from streaming_sensevoice import StreamingSenseVoice
+from models import StreamingSenseVoice, FSMNVADIterator
 
 
 class Config(BaseSettings, cli_parse_args=True, cli_use_class_docs_for_groups=True):
@@ -35,12 +34,13 @@ class Config(BaseSettings, cli_parse_args=True, cli_use_class_docs_for_groups=Tr
         "/home/tangyan/proj/hsc/ckpts/fsmn-vad-zh-cn-16k",
         description="FSMN-VAD 模型路径/仓库"
     )
-    DEVICE: str = Field("cpu", description="推理设备，cpu/cuda")
+    DEVICE: str = Field("cuda", description="推理设备，cpu/cuda")
     SAMPLERATE: int = Field(16000, description="采样率")
     CHUNK_MS: int = Field(200, description="分块时长（毫秒）")
     BEAM_SIZE: int = Field(1, description="CTC beam size（>1 需提供上下文）")
     LANGUAGE: str = Field("zh", description="语言，auto/zh/en/ja/ko/yue")
     TEXTNORM: bool = Field(False, description="是否启用逆文本规范化")
+    PREROLL_MS: int = Field(600, description="Pre-roll duration (ms)")
 
     class Config:
         extra = "ignore"
@@ -50,6 +50,7 @@ config = Config()
 
 # 预加载模型
 StreamingSenseVoice.load_model(model=config.SENSEVOICE_MODEL_PATH, device=config.DEVICE)
+FSMNVADIterator.load_model(model_path=config.FSMN_VAD_MODEL_PATH, device=config.DEVICE)
 
 app = FastAPI()
 app.add_middleware(
@@ -107,6 +108,8 @@ def _run_transcription(
         model_path=config.FSMN_VAD_MODEL_PATH,
         chunk_size_ms=chunk_ms,
         sample_rate=config.SAMPLERATE,
+        device=config.DEVICE,
+        max_preroll_ms=config.PREROLL_MS,
     )
 
     chunk_size = max(int(config.SAMPLERATE * chunk_ms / 1000), 1)
@@ -223,6 +226,8 @@ async def websocket_endpoint(websocket: WebSocket):
             model_path=config.FSMN_VAD_MODEL_PATH,
             chunk_size_ms=int(chunk_duration * 1000),
             sample_rate=config.SAMPLERATE,
+            device=config.DEVICE,
+            max_preroll_ms=config.PREROLL_MS,
         )
 
         audio_buffer = np.array([], dtype=np.float32)

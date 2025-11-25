@@ -678,7 +678,9 @@ class SenseVoiceSmall(nn.Module):
         from funasr import AutoModel
 
         model, kwargs = AutoModel.build_model(
-            model=model, trust_remote_code=True, **kwargs
+            model=model, 
+            trust_remote_code=True, 
+            **kwargs
         )
 
         return model, kwargs

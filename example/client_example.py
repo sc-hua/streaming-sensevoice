@@ -14,7 +14,7 @@ HOST = "127.0.0.1"
 PORT = 9000
 HTTP_URL = f"http://{HOST}:{PORT}"
 WS_URL = f"ws://{HOST}:{PORT}/api/realtime/ws"
-AUDIO_FILE = "data/test_16k.wav"
+AUDIO_FILE = "test_16k.wav"
 
 def test_http_transcribe():
     print(f"--- Testing HTTP Transcribe ({HTTP_URL}/api/asr/transcribe) ---")
