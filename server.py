@@ -1,9 +1,8 @@
 """
 统一的 SenseVoice HTTP + WebSocket 服务。
 
-- HTTP: POST /api/asr/transcribe  输入 audioBase64，可选 chunkMs/language/textnorm/beamSize
-       返回分段转写结果
-- WS  : /api/realtime/ws          复用原 demo，推送 VADEvent + TranscriptionResponse
+- HTTP: POST /api/asr/transcribe  输入 audioBase64，可选 chunkMs/language/textnorm/beamSize，返回分段转写结果
+- WS  : /ws/asr/transcribe        复用原 demo，推送 VADEvent + TranscriptionResponse
 """
 
 import base64
@@ -24,17 +23,13 @@ from models import StreamingSenseVoice, FSMNVADIterator
 
 class Config(BaseSettings, cli_parse_args=True, cli_use_class_docs_for_groups=True):
     HOST: str = Field("0.0.0.0", description="服务监听 Host")
-    PORT: int = Field(8000, description="服务监听端口")
+    PORT: int = Field(9000, description="服务监听端口")
     DEBUG: bool = Field(False, description="Debug 模式")
 
-    SENSEVOICE_MODEL_PATH: str = Field(
-        "/home/tangyan/proj/hsc/ckpts/sensevoice-small",
-        description="SenseVoice 模型路径/仓库")
-    FSMN_VAD_MODEL_PATH: str = Field(
-        "/home/tangyan/proj/hsc/ckpts/fsmn-vad-zh-cn-16k",
-        description="FSMN-VAD 模型路径/仓库"
-    )
+    SENSEVOICE_MODEL_PATH: str = Field("ckpts/sensevoice-small", description="SenseVoice 模型路径/仓库")
+    FSMN_VAD_MODEL_PATH: str = Field("ckpts/fsmn-vad-zh-cn-16k", description="FSMN-VAD 模型路径/仓库")
     DEVICE: str = Field("cuda", description="推理设备，cpu/cuda")
+    
     SAMPLERATE: int = Field(16000, description="采样率")
     CHUNK_MS: int = Field(200, description="分块时长（毫秒）")
     BEAM_SIZE: int = Field(1, description="CTC beam size（>1 需提供上下文）")
@@ -62,10 +57,10 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.get("/", tags=["health"])
+@app.get("/health", tags=["health"])
 async def root():
-    return {"message": "ASR API Server is running"}
-
+    return {"status": "ok", "message": "ASR API Server is running"}
 
 class TranscribeRequest(BaseModel):
     audioBase64: str
@@ -208,7 +203,7 @@ class VADEvent(BaseModel):
     is_active: bool
 
 
-@app.websocket("/api/realtime/ws")
+@app.websocket("/ws/asr/transcribe")
 async def websocket_endpoint(websocket: WebSocket):
     try:
         await websocket.accept()
